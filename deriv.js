@@ -2,73 +2,100 @@
 (() => {
   "use strict";
 
-  // Replace 1089 with your registered Deriv App ID if needed.
-  // This is an App ID, NOT an API token.
+  // Use your registered numeric Deriv App ID.
+  // Never put an API token or secret here.
   const APP_ID = "1089";
   const ENDPOINT =
     "wss://ws.derivws.com/websockets/v3?app_id=";
 
-  const get = (id) => document.getElementById(id);
-
+  const $ = (id) => document.getElementById(id);
   let socket = null;
-  let manuallyClosed = false;
-  let reconnectTimer = null;
-  let attempts = 0;
+  let retryTimer = null;
+  let retries = 0;
+  let stopped = true;
   let requestId = 0;
 
   function status(text) {
-    const el = get("connection");
+    const el = $("connection");
     if (el) el.textContent = "● " + text;
   }
 
   function message(text) {
-    const el = get("message");
+    const el = $("message");
     if (el) el.textContent = text;
   }
 
-  function closeSocket() {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-
-    const oldSocket = socket;
-    socket = null;
-
-    if (oldSocket &&
-        oldSocket.readyState < WebSocket.CLOSING) {
-      oldSocket.close();
+  function resetAnalysis() {
+    if (window.OrbisAnalysis?.reset) {
+      window.OrbisAnalysis.reset();
     }
   }
 
+  function disconnect(manual = true) {
+    if (manual) stopped = true;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+
+    const old = socket;
+    socket = null;
+    if (old && old.readyState < WebSocket.CLOSING) {
+      old.close();
+    }
+  }
+
+  function scheduleRetry() {
+    if (stopped) return;
+
+    if (retries >= 5) {
+      message("Reconnect limit reached. Check your internet and App ID.");
+      return;
+    }
+
+    retries++;
+    const delay = Math.min(2000 * retries, 10000);
+    message("Reconnecting in " + (delay / 1000) + " seconds...");
+    retryTimer = setTimeout(connect, delay);
+  }
+
   function connect() {
-    manuallyClosed = false;
-    clearTimeout(reconnectTimer);
+    clearTimeout(retryTimer);
 
     if (socket &&
         (socket.readyState === WebSocket.OPEN ||
          socket.readyState === WebSocket.CONNECTING)) {
+      message("Connection is already active.");
       return;
     }
 
-    const market = get("market")?.value || "R_10";
+    if (!/^\d+$/.test(APP_ID)) {
+      status("APP ID ERROR");
+      message("App ID must contain digits only. Do not use an API token.");
+      return;
+    }
+
+    stopped = false;
+    const market = $("market")?.value || "R_10";
+
     status("CONNECTING");
-    message("Opening Deriv connection...");
+    message("Connecting to Deriv for " + market + "...");
 
     let ws;
-
     try {
-      ws = new WebSocket(ENDPOINT + encodeURIComponent(APP_ID));
+      ws = new WebSocket(
+        ENDPOINT + encodeURIComponent(APP_ID)
+      );
       socket = ws;
     } catch (error) {
       status("CONNECTION ERROR");
-      message("Could not open the connection.");
-      scheduleReconnect();
+      message("Could not open WebSocket. Check your internet.");
+      scheduleRetry();
       return;
     }
 
     ws.onopen = () => {
       if (socket !== ws) return;
 
-      attempts = 0;
+      retries = 0;
       status("CONNECTED");
       message("Connected. Requesting live ticks...");
 
@@ -83,35 +110,39 @@
       if (socket !== ws) return;
 
       let data;
-
       try {
         data = JSON.parse(event.data);
       } catch {
-        message("Received an unreadable server response.");
+        message("Could not read the server response.");
         return;
       }
 
       if (data.error) {
         status("API ERROR");
-        message(data.error.message || "Deriv returned an error.");
+        message("Deriv error: " +
+          (data.error.message || "Unknown error"));
         return;
       }
 
       if (data.msg_type === "tick" && data.tick) {
-        const tick = data.tick;
+        const quote = Number(data.tick.quote);
 
-        if (window.OrbisAnalysis) {
-          window.OrbisAnalysis.onTick(Number(tick.quote));
+        if (Number.isFinite(quote)) {
+          if (window.OrbisAnalysis?.onTick) {
+            window.OrbisAnalysis.onTick(quote);
+          } else if ($("price")) {
+            $("price").textContent = String(data.tick.quote);
+          }
+
+          status("LIVE");
+          message("Live tick received for " + market + ".");
         }
-
-        status("LIVE");
-        message("Live ticks received.");
       }
     };
 
     ws.onerror = () => {
       if (socket === ws) {
-        message("Connection error. Check App ID and internet.");
+        message("WebSocket error. Check your connection and App ID.");
       }
     };
 
@@ -121,74 +152,44 @@
       socket = null;
       status("DISCONNECTED");
 
-      message(
-        `Connection closed (code ${event.code}).`
-      );
+      message("Socket closed (code " + event.code + ")." +
+        (event.code === 1006
+          ? " Abnormal closure. Check internet and registered App ID."
+          : ""));
 
-      if (!manuallyClosed) scheduleReconnect();
+      scheduleRetry();
     };
   }
 
-  function scheduleReconnect() {
-    clearTimeout(reconnectTimer);
-
-    if (manuallyClosed || attempts >= 5) {
-      message(
-        "Reconnect limit reached. Tap Connect to try again."
-      );
-      return;
-    }
-
-    attempts++;
-
-    reconnectTimer = setTimeout(() => {
-      if (!manuallyClosed) connect();
-    }, Math.min(2000 * attempts, 10000));
-  }
-
-  function disconnect() {
-    manuallyClosed = true;
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-    closeSocket();
-
-    status("DISCONNECTED");
-    message("Connection stopped.");
-  }
-
-  get("connectBtn")?.addEventListener("click", () => {
+  $("connectBtn")?.addEventListener("click", () => {
     if (socket &&
         (socket.readyState === WebSocket.OPEN ||
          socket.readyState === WebSocket.CONNECTING)) {
-      disconnect();
-      get("connectBtn").textContent = "Connect to Deriv";
+      disconnect(true);
+      status("DISCONNECTED");
+      message("Connection stopped.");
+      $("connectBtn").textContent = "Connect to Deriv";
     } else {
-      attempts = 0;
-      if (window.OrbisAnalysis) {
-        window.OrbisAnalysis.reset();
-      }
+      resetAnalysis();
+      retries = 0;
       connect();
-      get("connectBtn").textContent = "Disconnect";
+      $("connectBtn").textContent = "Disconnect";
     }
   });
 
-  get("market")?.addEventListener("change", () => {
-    const wasConnected = !manuallyClosed;
+  $("market")?.addEventListener("change", () => {
+    const reconnect = !stopped;
+    disconnect(false);
+    resetAnalysis();
 
-    closeSocket();
-
-    if (window.OrbisAnalysis) {
-      window.OrbisAnalysis.reset();
-    }
-
-    if (wasConnected) {
-      attempts = 0;
+    if (reconnect) {
+      stopped = false;
+      retries = 0;
       connect();
     }
   });
 
-  window.addEventListener("beforeunload", disconnect);
-
+  window.addEventListener("beforeunload", () => disconnect(true));
   status("DISCONNECTED");
 })();
-      
+  
