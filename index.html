@@ -1,0 +1,97 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b12">
+  <title>OrbisFX | Market Engine</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">O</span>
+      <div>
+        <h1>ORBIS<span>FX</span></h1>
+        <p>MARKET ENGINE</p>
+      </div>
+    </div>
+    <span id="connection" class="status">● DISCONNECTED</span>
+  </header>
+
+  <main class="container">
+    <section class="welcome">
+      <p class="eyebrow">TRADING INTELLIGENCE</p>
+      <h2>See the market.<br><span>Read the movement.</span></h2>
+      <p class="muted">Live market data and structured analysis.</p>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h3>Live Market</h3>
+        <span class="live-dot">● LIVE DATA</span>
+      </div>
+
+      <label for="market">Select market</label>
+      <select id="market">
+        <option value="R_10">Volatility 10 Index</option>
+        <option value="R_25">Volatility 25 Index</option>
+        <option value="R_50">Volatility 50 Index</option>
+        <option value="R_75">Volatility 75 Index</option>
+        <option value="R_100">Volatility 100 Index</option>
+        <option value="1HZ10V">Volatility 10 (1s)</option>
+        <option value="1HZ25V">Volatility 25 (1s)</option>
+        <option value="1HZ50V">Volatility 50 (1s)</option>
+        <option value="1HZ75V">Volatility 75 (1s)</option>
+        <option value="1HZ100V">Volatility 100 (1s)</option>
+      </select>
+
+      <div class="price-card">
+        <p class="muted">CURRENT PRICE</p>
+        <h2 id="price">Waiting for data...</h2>
+        <p class="muted">Last digit: <strong id="lastDigit">—</strong></p>
+      </div>
+
+      <button id="connectBtn" type="button">Connect to Deriv</button>
+      <p id="message" class="muted" role="status">Ready to connect.</p>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <p class="muted">MARKET STATUS</p>
+        <h3 id="marketStatus">WAIT</h3>
+        <p class="small">Awaiting sufficient live data.</p>
+      </div>
+      <div class="panel">
+        <p class="muted">TICKS RECEIVED</p>
+        <h3 id="tickCount">0</h3>
+        <p class="small">Live stream counter</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Analysis Engine</h3>
+      <p class="muted">Analysis will appear here as market data becomes available.</p>
+      <div class="analysis-row">
+        <span>Market data</span><strong id="dataStatus">PENDING</strong>
+      </div>
+      <div class="analysis-row">
+        <span>Analysis confirmation</span><strong id="analysisStatus">WAIT</strong>
+      </div>
+      <div class="analysis-row">
+        <span>Trading signal</span><strong>NOT CONFIRMED</strong>
+      </div>
+    </section>
+
+    <footer>
+      <p>ORBISFX MARKET ENGINE</p>
+      <p>Data-driven analysis. No guaranteed profits.</p>
+    </footer>
+  </main>
+
+  <script src="analysis.js"></script>
+  <script src="deriv.js"></script>
+</body>
+          </html>
+          
