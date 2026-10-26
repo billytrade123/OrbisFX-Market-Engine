@@ -1,120 +1,110 @@
+
 (() => {
-  "use stri
+  "use strict";
+
+  // OrbisFX Market Engine — Deriv live tick connection
+  const APP_ID = "34Mv5GktLBng7YrXnOgc7";
   const ENDPOINT =
     `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
-const APP_ID = "34Mv5GktLBng7YrXnOgc7";
+
+  const $ = (id) => document.getElementById(id);
+
   let socket = null;
-  let retryTimer = null;
-  let heartbeatTimer = null;
-  let manuallyClosed = false;
+  let reconnectTimer = null;
+  let connectionTimeout = null;
+  let manuallyDisconnected = false;
   let reconnectDelay = 2000;
+  let tickCount = 0;
 
   const state = {
+    symbol: "R_10",
     connected: false,
-    symbol: "1HZ10V",
-    lastPrice: null,
-    lastDigit: null,
-    ticks: [],
-    tickCount: 0
+    ticks: []
   };
 
-  function byId(...ids) {
-    for (const id of ids) {
-      const element = document.getElementById(id);
-      if (element) return element;
-    }
-    return null;
+  function setText(id, value) {
+    const element = $(id);
+    if (element) element.textContent = String(value);
   }
 
-  function showStatus(message, connected = false) {
+  function setStatus(message, connected = false) {
     state.connected = connected;
 
-    const element = byId(
-      "connectionStatus",
-      "connection-status",
-      "status",
-      "connection"
-    );
-
-    if (element) element.textContent = message;
-
-    const dot = byId("statusDot", "connectionDot");
-    if (dot) dot.style.backgroundColor = connected ? "#22c55e" : "#f59e0b";
+    const status = $("connection");
+    if (status) {
+      status.textContent = connected
+        ? "● CONNECTED"
+        : `● ${message.toUpperCase()}`;
+    }
 
     console.log("[OrbisFX]", message);
   }
 
-  function showPrice(price) {
-    const element = byId(
-      "livePrice",
-      "price",
-      "currentPrice",
-      "latestPrice"
-    );
+  function clearTimers() {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (connectionTimeout) clearTimeout(connectionTimeout);
 
-    if (element) element.textContent = String(price);
+    reconnectTimer = null;
+    connectionTimeout = null;
   }
 
-  function showDigit(digit) {
-    const element = byId("lastDigit", "last-digit", "digit");
-    if (element) element.textContent = String(digit);
+  function resetDisplay() {
+    tickCount = 0;
+    state.ticks = [];
+
+    setText("price", "Waiting for data...");
+    setText("lastDigit", "—");
+    setText("tickCount", "0");
+    setText("marketStatus", "WAIT");
+    setText("dataStatus", "PENDING");
+    setText("analysisStatus", "Waiting for live ticks");
+
+    if (window.OrbisAnalysis) {
+      window.OrbisAnalysis.reset();
+    }
   }
 
-  function showTickCount(count) {
-    const element = byId("tickCount", "ticksReceived");
-    if (element) element.textContent = String(count);
+  function getSymbol() {
+    const market = $("market");
+    return market && market.value ? market.value : "R_10";
   }
 
-  function getSelectedSymbol() {
-    const selector = byId("marketSelect", "market", "symbol", "marketSelector");
-    return selector && selector.value ? selector.value : state.symbol;
-  }
-
-  function extractLastDigit(quote, pipSize) {
+  function getLastDigit(quote, pipSize) {
     const decimals = Math.max(0, Number(pipSize) || 0);
-    const fixed = Number(quote).toFixed(decimals);
-    const digits = fixed.replace(/\D/g, "");
+    const formatted = Number(quote).toFixed(decimals);
+    const digits = formatted.replace(/\D/g, "");
+
     return Number(digits.charAt(digits.length - 1));
   }
 
-  function clearTimers() {
-    if (retryTimer) clearTimeout(retryTimer);
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    retryTimer = null;
-    heartbeatTimer = null;
-  }
-
-  function disconnect(manual = true) {
-    manuallyClosed = manual;
-    clearTimers();
-
-    if (socket) {
-      const oldSocket = socket;
-      socket = null;
-
-      try {
-        oldSocket.onopen = null;
-        oldSocket.onmessage = null;
-        oldSocket.onerror = null;
-        oldSocket.onclose = null;
-        oldSocket.close();
-      } catch (error) {
-        console.warn("[OrbisFX] Disconnect issue:", error);
-      }
-    }
-
+  function closeSocket() {
+    const oldSocket = socket;
+    socket = null;
     state.connected = false;
 
-    if (manual) showStatus("Disconnected");
+    if (oldSocket) {
+      oldSocket.onopen = null;
+      oldSocket.onmessage = null;
+      oldSocket.onerror = null;
+      oldSocket.onclose = null;
+
+      try {
+        oldSocket.close();
+      } catch (error) {
+        console.warn("[OrbisFX] Close error:", error);
+      }
+    }
   }
 
   function scheduleReconnect() {
-    if (manuallyClosed || retryTimer) return;
+    if (manuallyDisconnected || reconnectTimer) return;
 
-    showStatus(`Disconnected — retrying in ${Math.round(reconnectDelay / 1000)}s`);
+    setStatus(
+      `Disconnected — retrying in ${Math.round(reconnectDelay / 1000)} seconds`
+    );
 
-    retryTimer = setTimeout(() => {
-      retryTimer = null;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
       connect();
     }, reconnectDelay);
 
@@ -122,160 +112,210 @@ const APP_ID = "34Mv5GktLBng7YrXnOgc7";
   }
 
   function connect() {
-    manuallyClosed = false;
+    manuallyDisconnected = false;
     clearTimers();
+    closeSocket();
+    resetDisplay();
 
-    if (socket) {
-      try {
-        socket.close();
-      } catch (_) {}
-    }
+    state.symbol = getSymbol();
+    setStatus("Connecting to Deriv");
 
-    state.symbol = getSelectedSymbol();
-    showStatus("Connecting to Deriv…");
-
-    try {
-      socket = new WebSocket(ENDPOINT);
-    } catch (error) {
-      showStatus("Could not create WebSocket");
-      console.error("[OrbisFX] WebSocket error:", error);
+    if (!navigator.onLine) {
+      setStatus("No internet connection");
       scheduleReconnect();
       return;
     }
 
-    const thisSocket = socket;
+    let ws;
 
-    const timeout = setTimeout(() => {
-      if (thisSocket.readyState !== WebSocket.OPEN) {
+    try {
+      ws = new WebSocket(ENDPOINT);
+      socket = ws;
+    } catch (error) {
+      console.error("[OrbisFX] WebSocket creation failed:", error);
+      setStatus("Could not start WebSocket");
+      scheduleReconnect();
+      return;
+    }
+
+    connectionTimeout = setTimeout(() => {
+      if (socket === ws && ws.readyState !== WebSocket.OPEN) {
+        setStatus("Connection timed out");
         try {
-          thisSocket.close();
+          ws.close();
         } catch (_) {}
       }
-    }, 12000);
+    }, 15000);
 
-    thisSocket.onopen = () => {
-      clearTimeout(timeout);
+    ws.onopen = () => {
+      if (socket !== ws) return;
 
-      if (socket !== thisSocket) return;
-
+      clearTimers();
       reconnectDelay = 2000;
-      showStatus("Connected — subscribing to live ticks", true);
+      setStatus("Connected — requesting live ticks", true);
+      setText("message", "Connected. Waiting for the first tick...");
 
-      thisSocket.send(JSON.stringify({
+      ws.send(JSON.stringify({
         ticks: state.symbol,
         subscribe: 1
       }));
-
-      heartbeatTimer = setInterval(() => {
-        if (thisSocket.readyState === WebSocket.OPEN) {
-          // Public tick subscriptions provide the live stream.
-          // Do not send unsupported heartbeat messages.
-        }
-      }, 25000);
     };
 
-    thisSocket.onmessage = event => {
-      if (socket !== thisSocket) return;
+    ws.onmessage = (event) => {
+      if (socket !== ws) return;
 
       let data;
 
       try {
         data = JSON.parse(event.data);
       } catch (error) {
-        console.warn("[OrbisFX] Invalid response:", error);
+        console.warn("[OrbisFX] Invalid server response:", error);
         return;
       }
 
       if (data.error) {
-        console.error("[OrbisFX] Deriv API error:", data.error);
-        showStatus(`API error: ${data.error.message || "Unknown error"}`);
+        const message =
+          data.error.message || "Unknown Deriv API error";
+
+        console.error("[OrbisFX] API error:", data.error);
+        setStatus(`API error: ${message}`);
+        setText("message", message);
         return;
       }
 
-      if (data.msg_type === "tick" && data.tick) {
-        const tick = data.tick;
-        const price = Number(tick.quote);
+      if (data.msg_type !== "tick" || !data.tick) return;
 
-        if (!Number.isFinite(price)) return;
+      const tick = data.tick;
+      const quote = Number(tick.quote);
 
-        state.lastPrice = price;
-        state.lastDigit = extractLastDigit(price, tick.pip_size);
-        state.tickCount += 1;
+      if (!Number.isFinite(quote)) return;
 
-        state.ticks.push(state.lastDigit);
-        if (state.ticks.length > 100) state.ticks.shift();
+      const priceText = typeof tick.quote === "string"
+        ? tick.quote
+        : quote.toFixed(Number(tick.pip_size) || 2);
 
-        showPrice(tick.quote);
-        showDigit(state.lastDigit);
-        showTickCount(state.tickCount);
+      const digit = getLastDigit(quote, tick.pip_size);
 
-        document.dispatchEvent(new CustomEvent("orbisfx:tick", {
-          detail: {
-            symbol: tick.symbol,
-            quote: tick.quote,
-            digit: state.lastDigit,
-            epoch: tick.epoch,
-            ticks: [...state.ticks]
-          }
-        }));
+      tickCount += 1;
+      state.ticks.push({
+        price: quote,
+        digit,
+        epoch: tick.epoch
+      });
 
-        if (state.tickCount === 1) {
-          showStatus("Live ticks received", true);
-        }
+      if (state.ticks.length > 100) {
+        state.ticks.shift();
       }
+
+      setText("price", priceText);
+      setText("lastDigit", digit);
+      setText("tickCount", tickCount);
+      setText("dataStatus", "RECEIVING");
+      setText("message", `Receiving live ticks for ${state.symbol}`);
+
+      if (window.OrbisAnalysis) {
+        window.OrbisAnalysis.onTick(quote);
+      }
+
+      setStatus("Live ticks received", true);
     };
 
-    thisSocket.onerror = error => {
-      console.error("[OrbisFX] WebSocket error:", error);
-      showStatus("Connection error — check network and App ID");
+    ws.onerror = (event) => {
+      if (socket !== ws) return;
+
+      console.warn("[OrbisFX] WebSocket connection error:", event);
+      setStatus("WebSocket error — checking connection");
+      setText("message", "Connection error. Check App ID and network.");
     };
 
-    thisSocket.onclose = event => {
-      clearTimeout(timeout);
+    ws.onclose = (event) => {
+      if (socket !== ws) return;
 
-      if (socket !== thisSocket) return;
-
-      clearTimers();
       socket = null;
       state.connected = false;
+      clearTimers();
 
-      showStatus(`Socket closed — code ${event.code}`);
+      const reason = event.reason || "No reason supplied";
+      console.warn(
+        "[OrbisFX] Socket closed:",
+        event.code,
+        reason
+      );
 
-      if (!manuallyClosed) scheduleReconnect();
+      setStatus(`Disconnected — code ${event.code}`);
+      setText(
+        "message",
+        `Connection closed (code ${event.code}). ${reason}`
+      );
+
+      scheduleReconnect();
     };
   }
 
-  function bindControls() {
-    const connectButton = byId("connectBtn", "connect", "connectButton");
-    if (connectButton) {
-      connectButton.addEventListener("click", () => connect());
-    }
+  function disconnect() {
+    manuallyDisconnected = true;
+    clearTimers();
+    closeSocket();
+    setStatus("Disconnected");
+    setText("message", "Disconnected. Tap Connect to restart.");
+  }
 
-    const disconnectButton = byId("disconnectBtn", "disconnect");
-    if (disconnectButton) {
-      disconnectButton.addEventListener("click", () => disconnect(true));
-    }
+  function changeMarket() {
+    state.symbol = getSymbol();
 
-    const selector = byId("marketSelect", "market", "symbol", "marketSelector");
-    if (selector) {
-      selector.addEventListener("change", () => {
-        if (state.connected) connect();
-        else state.symbol = getSelectedSymbol();
-      });
+    if (state.connected || (socket && socket.readyState <= 1)) {
+      connect();
+    } else {
+      resetDisplay();
+      setText("message", "Market selected. Tap Connect to start.");
     }
   }
 
-  window.OrbisFXDeriv = {
+  function init() {
+    const connectButton = $("connectBtn");
+    const market = $("market");
+
+    if (connectButton) {
+      connectButton.addEventListener("click", () => {
+        if (state.connected) {
+          disconnect();
+        } else {
+          connect();
+        }
+      });
+    }
+
+    if (market) {
+      market.addEventListener("change", changeMarket);
+    }
+
+    window.addEventListener("online", () => {
+      if (!manuallyDisconnected) connect();
+    });
+
+    window.addEventListener("offline", () => {
+      setStatus("Internet disconnected");
+    });
+
+    resetDisplay();
+    setStatus("Ready to connect");
+  }
+
+  window.OrbisDeriv = {
     connect,
     disconnect,
-    getState: () => ({ ...state, ticks: [...state.ticks] })
+    getState: () => ({
+      symbol: state.symbol,
+      connected: state.connected,
+      tickCount,
+      recentTicks: state.ticks.slice()
+    })
   };
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bindControls);
+    document.addEventListener("DOMContentLoaded", init);
   } else {
-    bindControls();
+    init();
   }
-
-  console.log("[OrbisFX] Deriv module loaded.");
 })();
+    
