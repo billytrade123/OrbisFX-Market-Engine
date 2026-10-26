@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const APP_ID = "1089";
+  const APP_ID = 34Mv5GktLBng7YrXnOgc7
   const ENDPOINT =
     `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
 
