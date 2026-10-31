@@ -7,7 +7,7 @@
   // DERIV LIVE TICK CONNECTION
   // ==========================================
 
-  const APP_ID = "34Mv5GktLBng7YrXnOgc7";
+  const APP_ID = "10897";
   const WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
 
   const $ = id => document.getElementById(id);
