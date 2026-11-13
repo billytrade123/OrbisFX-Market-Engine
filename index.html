@@ -5,93 +5,139 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080b12">
-  <title>OrbisFX | Market Engine</title>
+  <title>OrbisFX Market Engine</title>
   <link rel="stylesheet" href="style.css">
+  <script src="analysis.js" defer></script>
+  <script src="deriv.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-icon">O</span>
-      <div>
-        <h1>ORBIS<span>FX</span></h1>
-        <p>MARKET ENGINE</p>
-      </div>
-    </div>
-    <span id="connection" class="status">● DISCONNECTED</span>
-  </header>
+  <main class="app">
 
-  <main class="container">
-    <section class="welcome">
-      <p class="eyebrow">TRADING INTELLIGENCE</p>
-      <h2>See the market.<br><span>Read the movement.</span></h2>
-      <p class="muted">Live market data and structured analysis.</p>
-    </section>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">ORbisFX / MARKET INTELLIGENCE</p>
+        <h1>OrbisFX <span>Market Engine</span></h1>
+      </div>
+      <div class="connection">
+        <span id="connectionDot" class="status-dot"></span>
+        <span id="connectionStatus">DISCONNECTED</span>
+      </div>
+    </header>
 
     <section class="panel">
-      <div class="section-heading">
-        <h3>Live Market</h3>
-        <span class="live-dot">● LIVE DATA</span>
-      </div>
+      <h2>Connection setup</h2>
 
-      <label for="market">Select market</label>
-      <select id="market">
-        <option value="R_10">Volatility 10 Index</option>
-        <option value="R_25">Volatility 25 Index</option>
-        <option value="R_50">Volatility 50 Index</option>
-        <option value="R_75">Volatility 75 Index</option>
-        <option value="R_100">Volatility 100 Index</option>
+      <label for="appId">Deriv App ID</label>
+      <input id="appId" type="number" inputmode="numeric"
+        placeholder="Enter your registered App ID">
+
+      <label for="marketSelect">Market</label>
+      <select id="marketSelect">
         <option value="1HZ10V">Volatility 10 (1s)</option>
         <option value="1HZ25V">Volatility 25 (1s)</option>
         <option value="1HZ50V">Volatility 50 (1s)</option>
         <option value="1HZ75V">Volatility 75 (1s)</option>
         <option value="1HZ100V">Volatility 100 (1s)</option>
+        <option value="R_10">Volatility 10</option>
+        <option value="R_25">Volatility 25</option>
+        <option value="R_50">Volatility 50</option>
+        <option value="R_75">Volatility 75</option>
+        <option value="R_100">Volatility 100</option>
       </select>
 
-      <div class="price-card">
-        <p class="muted">CURRENT PRICE</p>
-        <h2 id="price">Waiting for data...</h2>
-        <p class="muted">Last digit: <strong id="lastDigit">—</strong></p>
+      <div class="button-row">
+        <button id="connectBtn" type="button">CONNECT</button>
+        <button id="disconnectBtn" type="button" class="secondary">
+          DISCONNECT
+        </button>
       </div>
 
-      <button id="connectBtn" type="button">Connect to Deriv</button>
-      <p id="message" class="muted" role="status">Ready to connect.</p>
+      <p id="diagnostic" class="muted">Waiting for connection.</p>
     </section>
 
-    <section class="grid">
-      <div class="panel">
-        <p class="muted">MARKET STATUS</p>
-        <h3 id="marketStatus">WAIT</h3>
-        <p class="small">Awaiting sufficient live data.</p>
+    <section class="market-grid">
+      <div class="panel metric">
+        <p>LIVE PRICE</p>
+        <h2 id="livePrice">--</h2>
       </div>
-      <div class="panel">
-        <p class="muted">TICKS RECEIVED</p>
-        <h3 id="tickCount">0</h3>
-        <p class="small">Live stream counter</p>
+      <div class="panel metric">
+        <p>LAST DIGIT</p>
+        <h2 id="lastDigit">--</h2>
+      </div>
+      <div class="panel metric">
+        <p>TICKS RECEIVED</p>
+        <h2 id="tickCount">0</h2>
       </div>
     </section>
 
     <section class="panel">
-      <h3>Analysis Engine</h3>
-      <p class="muted">Analysis will appear here as market data becomes available.</p>
-      <div class="analysis-row">
-        <span>Market data</span><strong id="dataStatus">PENDING</strong>
-      </div>
-      <div class="analysis-row">
-        <span>Analysis confirmation</span><strong id="analysisStatus">WAIT</strong>
-      </div>
-      <div class="analysis-row">
-        <span>Trading signal</span><strong>NOT CONFIRMED</strong>
+      <h2>Digit analysis</h2>
+      <p class="muted">Rolling sample: latest 100 ticks</p>
+
+      <div id="frequencyGrid" class="frequency-grid">
+        <div>0 <strong>0%</strong></div>
+        <div>1 <strong>0%</strong></div>
+        <div>2 <strong>0%</strong></div>
+        <div>3 <strong>0%</strong></div>
+        <div>4 <strong>0%</strong></div>
+        <div>5 <strong>0%</strong></div>
+        <div>6 <strong>0%</strong></div>
+        <div>7 <strong>0%</strong></div>
+        <div>8 <strong>0%</strong></div>
+        <div>9 <strong>0%</strong></div>
       </div>
     </section>
 
-    <footer>
-      <p>ORBISFX MARKET ENGINE</p>
-      <p>Data-driven analysis. No guaranteed profits.</p>
-    </footer>
-  </main>
+    <section class="panel">
+      <h2>Matches / Differs</h2>
 
-  <script src="analysis.js"></script>
-  <script src="deriv.js"></script>
+      <label for="barrierDigit">Choose barrier digit</label>
+      <select id="barrierDigit">
+        <option value="0">Digit 0</option>
+        <option value="1">Digit 1</option>
+        <option value="2">Digit 2</option>
+        <option value="3">Digit 3</option>
+        <option value="4">Digit 4</option>
+        <option value="5">Digit 5</option>
+        <option value="6">Digit 6</option>
+        <option value="7">Digit 7</option>
+        <option value="8">Digit 8</option>
+        <option value="9">Digit 9</option>
+      </select>
+
+      <div class="market-grid">
+        <div class="metric">
+          <p>MATCHES</p>
+          <h2 id="matchesCount">0</h2>
+        </div>
+        <div class="metric">
+          <p>DIFFERS</p>
+          <h2 id="differsCount">0</h2>
+        </div>
+      </div>
+
+      <p id="sampleStatus" class="muted">
+        Waiting for tick data.
+      </p>
+    </section>
+
+    <section class="panel signal-panel">
+      <p class="eyebrow">ORBISFX ANALYSIS</p>
+      <h2 id="signalStatus">WAIT</h2>
+      <p id="signalReason">
+        Connect to Deriv and collect tick data before analysis.
+      </p>
+      <p class="warning">
+        Historical digit frequency does not predict the next tick.
+        This dashboard provides statistics, not guaranteed signals.
+      </p>
+    </section>
+
+    <footer>
+      <p>ORbisFX MARKET ENGINE</p>
+      <p>Market data and statistics only · No trades are placed</p>
+    </footer>
+
+  </main>
 </body>
-          </html>
-          
+</html>
